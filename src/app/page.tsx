@@ -1,21 +1,21 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
-  addEdge,
-  type Connection,
   type NodeTypes,
-  useEdgesState,
-  useNodesState,
-  type Edge,
-  type Node,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { BasicNode } from "../components/BasicNode";
+import { TextNode } from "../components/nodes/TextNode";
+import { UploadImageNode } from "../components/nodes/UploadImageNode";
+import { UploadVideoNode } from "../components/nodes/UploadVideoNode";
+import { LLMNode } from "../components/nodes/LLMNode";
+import { CropImageNode } from "../components/nodes/CropImageNode";
+import { ExtractFrameNode } from "../components/nodes/ExtractFrameNode";
 import { Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { useWorkflowStore } from "../lib/store";
 
 type NodeKind =
   | "text"
@@ -58,29 +58,28 @@ function createNodeData(kind: NodeKind) {
         description: "Extract a frame from a video using FFmpeg.",
       };
     default: {
-      // Makes the switch exhaustive when NodeKind changes.
       const _exhaustive: never = kind;
       return _exhaustive;
     }
   }
 }
 
-const initialNodes: Node[] = [
+const initialNodes = [
   {
     id: "1",
     position: { x: 250, y: 100 },
     data: createNodeData("text"),
-    type: "basic",
+    type: "text",
   },
   {
     id: "2",
     position: { x: 250, y: 250 },
     data: createNodeData("llm"),
-    type: "basic",
+    type: "llm",
   },
 ];
 
-const initialEdges: Edge[] = [
+const initialEdges = [
   {
     id: "e1-2",
     source: "1",
@@ -93,29 +92,32 @@ let id = 3;
 const getId = () => `${id++}`;
 
 const nodeTypes: NodeTypes = {
-  basic: BasicNode,
+  text: TextNode,
+  uploadImage: UploadImageNode,
+  uploadVideo: UploadVideoNode,
+  llm: LLMNode,
+  cropImage: CropImageNode,
+  extractFrame: ExtractFrameNode,
 };
 
 export default function Home() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  // Grab state and actions from our global Zustand store!
+  const {
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    addNode,
+    setNodes,
+    setEdges,
+  } = useWorkflowStore();
 
-  const addNode = (kind: NodeKind) => {
-    const newNode: Node = {
-      id: getId(),
-      position: { x: 400, y: 200 },
-      data: createNodeData(kind),
-      type: "basic",
-    };
-    setNodes((nds) => nds.concat(newNode));
-  };
-
-  const onConnect = React.useCallback(
-    (connection: Connection) => {
-      setEdges((eds) => addEdge({ ...connection, animated: true }, eds));
-    },
-    [setEdges],
-  );
+  // We set the initial layout once when the page loads
+  useEffect(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [setNodes, setEdges]);
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-50">
@@ -143,42 +145,31 @@ export default function Home() {
             Quick Access
           </div>
           <div className="space-y-2 text-sm">
-            <button
-              className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100"
-              onClick={() => addNode("text")}
-            >
-              Text Node
-            </button>
-            <button
-              className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100"
-              onClick={() => addNode("uploadImage")}
-            >
-              Upload Image
-            </button>
-            <button
-              className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100"
-              onClick={() => addNode("uploadVideo")}
-            >
-              Upload Video
-            </button>
-            <button
-              className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100"
-              onClick={() => addNode("llm")}
-            >
-              LLM
-            </button>
-            <button
-              className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100"
-              onClick={() => addNode("cropImage")}
-            >
-              Crop Image
-            </button>
-            <button
-              className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100"
-              onClick={() => addNode("extractFrame")}
-            >
-              Extract Frame
-            </button>
+            {(
+              [
+                "text",
+                "uploadImage",
+                "uploadVideo",
+                "llm",
+                "cropImage",
+                "extractFrame",
+              ] as NodeKind[]
+            ).map((kind) => (
+              <button
+                key={kind}
+                className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100"
+                onClick={() =>
+                  addNode({
+                    id: getId(),
+                    position: { x: 400, y: 200 },
+                    data: createNodeData(kind),
+                    type: kind,
+                  })
+                }
+              >
+                {createNodeData(kind).label}
+              </button>
+            ))}
           </div>
         </aside>
 
@@ -212,7 +203,7 @@ export default function Home() {
             Workflow History
           </div>
           <p className="text-xs text-slate-500">
-            Runs will appear here once you execute a workflow.
+            Global Zustand store is now managing your nodes!
           </p>
         </aside>
       </main>
