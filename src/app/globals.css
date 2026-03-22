@@ -3,13 +3,15 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --font-sans-stack: "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono-stack: "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans-stack);
+  --font-mono: var(--font-mono-stack);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,7 +24,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans-stack);
 }
 
 @keyframes pulse-glow {
@@ -44,4 +46,3 @@ body {
 .node-glow-active-emerald {
   animation: pulse-glow-emerald 2s infinite ease-in-out;
 }
-
