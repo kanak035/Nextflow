@@ -77,4 +77,3 @@ model NodeRun {
 
   @@index([workflowRunId])
 }
-

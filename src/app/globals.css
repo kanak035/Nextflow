@@ -24,3 +24,24 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 5px 0px rgba(100, 116, 139, 0.4); border-color: rgba(71, 85, 105, 1); }
+  50% { box-shadow: 0 0 20px 5px rgba(147, 51, 234, 0.6); border-color: rgba(168, 85, 247, 1); }
+  100% { box-shadow: 0 0 5px 0px rgba(100, 116, 139, 0.4); border-color: rgba(71, 85, 105, 1); }
+}
+
+@keyframes pulse-glow-emerald {
+  0% { box-shadow: 0 0 5px 0px rgba(100, 116, 139, 0.4); border-color: rgba(71, 85, 105, 1); }
+  50% { box-shadow: 0 0 20px 5px rgba(16, 185, 129, 0.6); border-color: rgba(52, 211, 153, 1); }
+  100% { box-shadow: 0 0 5px 0px rgba(100, 116, 139, 0.4); border-color: rgba(71, 85, 105, 1); }
+}
+
+.node-glow-active-purple {
+  animation: pulse-glow 2s infinite ease-in-out;
+}
+
+.node-glow-active-emerald {
+  animation: pulse-glow-emerald 2s infinite ease-in-out;
+}
+

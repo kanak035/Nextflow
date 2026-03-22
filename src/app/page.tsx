@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState, useTransition } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -8,88 +8,27 @@ import ReactFlow, {
   type NodeTypes,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import { Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { Download, Loader2, Play, Save, Upload } from "lucide-react";
 import { TextNode } from "../components/nodes/TextNode";
 import { UploadImageNode } from "../components/nodes/UploadImageNode";
 import { UploadVideoNode } from "../components/nodes/UploadVideoNode";
 import { LLMNode } from "../components/nodes/LLMNode";
 import { CropImageNode } from "../components/nodes/CropImageNode";
 import { ExtractFrameNode } from "../components/nodes/ExtractFrameNode";
-import { Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { HistorySidebar } from "../components/HistorySidebar";
 import { useWorkflowStore } from "../lib/store";
-
-type NodeKind =
-  | "text"
-  | "uploadImage"
-  | "uploadVideo"
-  | "llm"
-  | "cropImage"
-  | "extractFrame";
-
-function createNodeData(kind: NodeKind) {
-  switch (kind) {
-    case "text":
-      return {
-        label: "Text Node",
-        description: "Free-form text input (prompt or content).",
-      };
-    case "uploadImage":
-      return {
-        label: "Upload Image",
-        description: "Upload an image via Transloadit.",
-      };
-    case "uploadVideo":
-      return {
-        label: "Upload Video",
-        description: "Upload a video file for processing.",
-      };
-    case "llm":
-      return {
-        label: "LLM Node",
-        description: "Runs a Gemini model via Trigger.dev.",
-      };
-    case "cropImage":
-      return {
-        label: "Crop Image",
-        description: "Crop an image frame using FFmpeg.",
-      };
-    case "extractFrame":
-      return {
-        label: "Extract Frame",
-        description: "Extract a frame from a video using FFmpeg.",
-      };
-    default: {
-      const _exhaustive: never = kind;
-      return _exhaustive;
-    }
-  }
-}
-
-const initialNodes = [
-  {
-    id: "1",
-    position: { x: 250, y: 100 },
-    data: createNodeData("text"),
-    type: "text",
-  },
-  {
-    id: "2",
-    position: { x: 250, y: 250 },
-    data: createNodeData("llm"),
-    type: "llm",
-  },
-];
-
-const initialEdges = [
-  {
-    id: "e1-2",
-    source: "1",
-    target: "2",
-    animated: true,
-  },
-];
-
-let id = 3;
-const getId = () => `${id++}`;
+import {
+  createNodeData,
+  workflowGraphSchema,
+  type WorkflowGraph,
+  type WorkflowNodeKind,
+} from "../lib/workflow-graph";
+import {
+  loadWorkflowAction,
+  runWorkflowAction,
+  saveWorkflowAction,
+} from "./actions/workflow";
 
 const nodeTypes: NodeTypes = {
   text: TextNode,
@@ -100,30 +39,199 @@ const nodeTypes: NodeTypes = {
   extractFrame: ExtractFrameNode,
 };
 
+let nextId = 1000;
+const getId = () => `${nextId++}`;
+
 export default function Home() {
-  // Grab state and actions from our global Zustand store!
+  const [isRunning, startRunTransition] = useTransition();
+  const [isSaving, startSaveTransition] = useTransition();
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const {
+    workflowId,
+    workflowName,
     nodes,
     edges,
     onNodesChange,
     onEdgesChange,
     onConnect,
     addNode,
-    setNodes,
-    setEdges,
+    loadWorkflowGraph,
+    setWorkflowMeta,
+    setWorkflowName,
   } = useWorkflowStore();
 
-  // We set the initial layout once when the page loads
   useEffect(() => {
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-  }, [setNodes, setEdges]);
+    let cancelled = false;
+
+    async function bootstrap() {
+      const workflow = await loadWorkflowAction();
+
+      if (!cancelled) {
+        if (workflow) {
+          loadWorkflowGraph(
+            workflow.workflowId,
+            workflow.name,
+            workflow.graph.nodes,
+            workflow.graph.edges
+          );
+        }
+        setIsBootstrapping(false);
+      }
+    }
+
+    bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadWorkflowGraph]);
+
+  const saveWorkflow = () => {
+    startSaveTransition(async () => {
+      const response = await saveWorkflowAction({
+        workflowId: workflowId ?? undefined,
+        name: workflowName,
+        graph: {
+          nodes: nodes as WorkflowGraph["nodes"],
+          edges: edges as WorkflowGraph["edges"],
+        },
+      });
+
+      if (response.success) {
+        setWorkflowMeta(response.workflowId, response.name);
+      }
+    });
+  };
+
+  const runWorkflow = () => {
+    startRunTransition(async () => {
+      const response = await runWorkflowAction({
+        workflowId: workflowId ?? undefined,
+        name: workflowName,
+        graph: {
+          nodes: nodes as WorkflowGraph["nodes"],
+          edges: edges as WorkflowGraph["edges"],
+        },
+      });
+
+      if (response.workflowId) {
+        setWorkflowMeta(response.workflowId, workflowName);
+      }
+
+      if (response.nodes && response.edges) {
+        loadWorkflowGraph(
+          response.workflowId,
+          workflowName,
+          response.nodes,
+          response.edges
+        );
+      }
+    });
+  };
+
+  const exportWorkflow = () => {
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            workflowId,
+            name: workflowName,
+            graph: { nodes, edges },
+          },
+          null,
+          2
+        ),
+      ],
+      { type: "application/json" }
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${workflowName.replace(/\s+/g, "-").toLowerCase() || "workflow"}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importWorkflow = async (file: File) => {
+    const content = await file.text();
+    const parsed = JSON.parse(content) as unknown;
+    const imported = workflowGraphSchema.parse(
+      typeof parsed === "object" && parsed !== null && "graph" in parsed
+        ? (parsed as { graph: unknown }).graph
+        : parsed
+    );
+    const importedName = file.name.replace(/\.json$/i, "") || "Imported workflow";
+    const response = await saveWorkflowAction({
+      name: importedName,
+      graph: imported,
+    });
+    loadWorkflowGraph(response.workflowId, response.name, imported.nodes, imported.edges);
+  };
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-50">
       <header className="flex items-center justify-between border-b border-slate-800 px-4 py-2 text-xs">
-        <div className="font-semibold tracking-[0.18em] text-slate-400">
-          NEXTFLOW
+        <div className="flex items-center gap-4">
+          <div className="font-semibold tracking-[0.18em] text-slate-400">
+            NEXTFLOW
+          </div>
+          <input
+            value={workflowName}
+            onChange={(event) => setWorkflowName(event.target.value)}
+            className="w-52 rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-emerald-500"
+            placeholder="Workflow name"
+          />
+          <button
+            onClick={saveWorkflow}
+            disabled={isSaving || isBootstrapping}
+            className="rounded-md bg-slate-800 px-3 py-1.5 text-white transition-colors hover:bg-slate-700 disabled:bg-slate-900 flex items-center gap-2"
+          >
+            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Save
+          </button>
+          <button
+            onClick={exportWorkflow}
+            disabled={isBootstrapping || nodes.length === 0}
+            className="rounded-md bg-slate-800 px-3 py-1.5 text-white transition-colors hover:bg-slate-700 disabled:bg-slate-900 flex items-center gap-2"
+          >
+            <Download size={14} />
+            Export JSON
+          </button>
+          <button
+            onClick={() => importInputRef.current?.click()}
+            className="rounded-md bg-slate-800 px-3 py-1.5 text-white transition-colors hover:bg-slate-700 flex items-center gap-2"
+          >
+            <Upload size={14} />
+            Import JSON
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                importWorkflow(file).catch((error) => {
+                  console.error("Failed to import workflow:", error);
+                });
+              }
+              event.target.value = "";
+            }}
+          />
+          <button
+            onClick={runWorkflow}
+            disabled={isRunning || isBootstrapping}
+            className="rounded-md bg-emerald-600 px-3 py-1.5 text-white transition-colors hover:bg-emerald-700 disabled:bg-slate-800 flex items-center gap-2 font-medium"
+          >
+            {isRunning ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Play size={14} fill="currentColor" />
+            )}
+            Run Full Workflow
+          </button>
         </div>
         <div>
           <Show when="signed-in">
@@ -139,7 +247,6 @@ export default function Home() {
         </div>
       </header>
       <main className="flex h-[calc(100vh-2.5rem)]">
-        {/* Left sidebar */}
         <aside className="w-64 border-r border-slate-800 bg-slate-900/60 px-4 py-6">
           <div className="mb-6 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">
             Quick Access
@@ -153,7 +260,7 @@ export default function Home() {
                 "llm",
                 "cropImage",
                 "extractFrame",
-              ] as NodeKind[]
+              ] as WorkflowNodeKind[]
             ).map((kind) => (
               <button
                 key={kind}
@@ -173,22 +280,27 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* Center canvas with React Flow, protected by auth */}
         <section className="flex-1 border-r border-slate-800 bg-slate-950/70">
           <Show when="signed-in">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              fitView
-            >
-              <MiniMap />
-              <Controls />
-              <Background gap={20} size={1} />
-            </ReactFlow>
+            {isBootstrapping ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                Loading workflow...
+              </div>
+            ) : (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                fitView
+              >
+                <MiniMap />
+                <Controls />
+                <Background gap={20} size={1} />
+              </ReactFlow>
+            )}
           </Show>
           <Show when="signed-out">
             <div className="flex h-full items-center justify-center text-xs text-slate-400">
@@ -197,14 +309,8 @@ export default function Home() {
           </Show>
         </section>
 
-        {/* Right sidebar */}
-        <aside className="w-80 bg-slate-900/60 px-4 py-6">
-          <div className="mb-4 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">
-            Workflow History
-          </div>
-          <p className="text-xs text-slate-500">
-            Global Zustand store is now managing your nodes!
-          </p>
+        <aside className="w-96 border-l border-slate-800 bg-slate-900/60 px-4 py-6">
+          <HistorySidebar />
         </aside>
       </main>
     </div>
