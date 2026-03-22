@@ -1,7 +1,6 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
-import { Prisma } from "@prisma/client";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +20,9 @@ const DEFAULT_LLM_MODEL = "gemini-2.5-flash";
 const NODE_RUN_TIMEOUT_MS = 120_000;
 
 type NodeRunRecord = Awaited<ReturnType<typeof prisma.nodeRun.findUnique>>;
+type JsonScalar = string | number | boolean;
+type JsonValue = JsonScalar | JsonObject | JsonValue[];
+type JsonObject = { [key: string]: JsonValue };
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -230,10 +232,11 @@ async function triggerTrackedNodeRun(
   });
 
   const payload = getNodeTaskPayload(node, workflowRunId, nodeRun.id);
+  const sanitizedPayload = sanitizeJsonValue(payload) as JsonValue;
   await prisma.nodeRun.update({
     where: { id: nodeRun.id },
     data: {
-      input: payload as Prisma.InputJsonValue,
+      input: sanitizedPayload,
     },
   });
   await tasks.trigger(getTaskIdForNode(node.type), payload);
@@ -243,6 +246,24 @@ async function triggerTrackedNodeRun(
   return {
     nodeRun: completedNodeRun,
   };
+}
+
+function sanitizeJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeJsonValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, sanitizeJsonValue(entryValue)])
+    );
+  }
+
+  return value;
 }
 
 async function updateWorkflowRunStatus(
@@ -516,7 +537,7 @@ async function executeWorkflowGraph(params: {
       graph: {
         nodes: workingNodes,
         edges: graph.edges,
-      } as Prisma.InputJsonValue,
+      } as JsonValue,
     },
   });
 

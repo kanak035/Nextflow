@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import {
   createSampleWorkflowGraph,
@@ -19,6 +18,9 @@ export const workflowImportSchema = z.object({
 });
 
 type SaveWorkflowInput = z.infer<typeof workflowSaveSchema>;
+type JsonScalar = string | number | boolean;
+type JsonValue = JsonScalar | JsonObject | JsonValue[];
+type JsonObject = { [key: string]: JsonValue };
 
 export async function getLatestWorkflowForOwner(ownerId: string) {
   return prisma.workflow.findFirst({
@@ -47,7 +49,7 @@ export async function getOrCreateWorkflowForOwner(ownerId: string) {
     data: {
       ownerId,
       name: "Sample workflow",
-      graph: graph as Prisma.InputJsonValue,
+      graph: graph as JsonValue,
     },
   });
 }
@@ -63,7 +65,7 @@ export async function saveWorkflowForOwner(ownerId: string, input: SaveWorkflowI
         where: { id: existing.id },
         data: {
           name: parsed.name,
-          graph: sanitizedGraph as Prisma.InputJsonValue,
+          graph: sanitizedGraph as JsonValue,
         },
       });
     }
@@ -73,7 +75,7 @@ export async function saveWorkflowForOwner(ownerId: string, input: SaveWorkflowI
     data: {
       ownerId,
       name: parsed.name,
-      graph: sanitizedGraph as Prisma.InputJsonValue,
+      graph: sanitizedGraph as JsonValue,
     },
   });
 }

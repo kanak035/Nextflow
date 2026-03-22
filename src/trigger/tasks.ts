@@ -1,13 +1,16 @@
 import { task, logger } from "@trigger.dev/sdk/v3";
-import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { runGeminiTask } from "../lib/gemini";
 import { cropImage, extractFrame } from "../lib/ffmpeg";
 
+type JsonScalar = string | number | boolean;
+type JsonValue = JsonScalar | JsonObject | JsonValue[];
+type JsonObject = { [key: string]: JsonValue };
+
 async function completeNodeRun(
   nodeRunId: string,
   status: "SUCCESS" | "FAILED",
-  output?: Prisma.InputJsonObject,
+  output?: JsonObject,
   errorMessage?: string
 ) {
   return prisma.nodeRun.update({
