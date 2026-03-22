@@ -54,6 +54,7 @@ export async function getOrCreateWorkflowForOwner(ownerId: string) {
 
 export async function saveWorkflowForOwner(ownerId: string, input: SaveWorkflowInput) {
   const parsed = workflowSaveSchema.parse(input);
+  const sanitizedGraph = sanitizeJsonValue(parsed.graph) as WorkflowGraph;
 
   if (parsed.workflowId) {
     const existing = await getWorkflowForOwner(ownerId, parsed.workflowId);
@@ -62,7 +63,7 @@ export async function saveWorkflowForOwner(ownerId: string, input: SaveWorkflowI
         where: { id: existing.id },
         data: {
           name: parsed.name,
-          graph: parsed.graph as Prisma.InputJsonValue,
+          graph: sanitizedGraph as Prisma.InputJsonValue,
         },
       });
     }
@@ -72,11 +73,29 @@ export async function saveWorkflowForOwner(ownerId: string, input: SaveWorkflowI
     data: {
       ownerId,
       name: parsed.name,
-      graph: parsed.graph as Prisma.InputJsonValue,
+      graph: sanitizedGraph as Prisma.InputJsonValue,
     },
   });
 }
 
 export function parseWorkflowGraph(graph: unknown): WorkflowGraph {
   return workflowGraphSchema.parse(graph);
+}
+
+function sanitizeJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeJsonValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, sanitizeJsonValue(entryValue)])
+    );
+  }
+
+  return value;
 }

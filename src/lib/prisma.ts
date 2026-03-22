@@ -9,7 +9,6 @@ if (typeof window === "undefined") {
 }
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-type PrismaAdapterLike = ConstructorParameters<typeof PrismaClient>[0]["adapter"];
 
 function makePrisma() {
   // Use the same URL from .env.local that Next.js loads
@@ -23,7 +22,7 @@ function makePrisma() {
 
   const adapter = new PrismaNeon({ connectionString: url });
 
-  return new PrismaClient({ adapter: adapter as PrismaAdapterLike });
+  return new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
 }
 
 export const prisma = globalForPrisma.prisma ?? makePrisma();

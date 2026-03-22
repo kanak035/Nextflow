@@ -18,7 +18,7 @@ export async function runGeminiTask(
   modelName: string,
   systemPrompt: string,
   userPrompt: string,
-  imageUrl?: string
+  imageUrls: string[] = []
 ) {
   const resolvedModelName = resolveModelName(modelName);
   const model = genAI.getGenerativeModel({ 
@@ -26,11 +26,11 @@ export async function runGeminiTask(
     systemInstruction: systemPrompt 
   });
 
-  const promptParts: any[] = [userPrompt];
+  const promptParts: Array<string | { inlineData: { data: string; mimeType: string } }> = [
+    userPrompt,
+  ];
 
-  if (imageUrl) {
-    // Note: In a real Trigger.dev task, we would download the image and pass buffer/mime
-    // For now, we'll try to fetch it if it's a URL
+  for (const imageUrl of imageUrls) {
     try {
       const response = await fetch(imageUrl);
       const buffer = await response.arrayBuffer();

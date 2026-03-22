@@ -5,11 +5,12 @@ import ReactFlow, {
   Background,
   Controls,
   MiniMap,
+  type ReactFlowInstance,
   type NodeTypes,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Show, SignInButton, UserButton } from "@clerk/nextjs";
-import { Download, Loader2, Play, Save, Upload } from "lucide-react";
+import { Download, Loader2, Play, Redo2, Save, Undo2, Upload } from "lucide-react";
 import { TextNode } from "../components/nodes/TextNode";
 import { UploadImageNode } from "../components/nodes/UploadImageNode";
 import { UploadVideoNode } from "../components/nodes/UploadVideoNode";
@@ -19,6 +20,7 @@ import { ExtractFrameNode } from "../components/nodes/ExtractFrameNode";
 import { HistorySidebar } from "../components/HistorySidebar";
 import { useWorkflowStore } from "../lib/store";
 import {
+  createSampleWorkflowGraph,
   createNodeData,
   workflowGraphSchema,
   type WorkflowGraph,
@@ -26,6 +28,7 @@ import {
 } from "../lib/workflow-graph";
 import {
   loadWorkflowAction,
+  runSelectedNodesAction,
   runWorkflowAction,
   saveWorkflowAction,
 } from "./actions/workflow";
@@ -45,21 +48,30 @@ const getId = () => `${nextId++}`;
 export default function Home() {
   const [isRunning, startRunTransition] = useTransition();
   const [isSaving, startSaveTransition] = useTransition();
+  const [isRunningSelected, startSelectedRunTransition] = useTransition();
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const {
     workflowId,
     workflowName,
     nodes,
     edges,
+    canUndo,
+    canRedo,
     onNodesChange,
     onEdgesChange,
     onConnect,
+    isValidConnection,
     addNode,
+    removeEdgeById,
     loadWorkflowGraph,
     setWorkflowMeta,
     setWorkflowName,
+    undo,
+    redo,
   } = useWorkflowStore();
+  const selectedNodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +98,32 @@ export default function Home() {
       cancelled = true;
     };
   }, [loadWorkflowGraph]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isModifierPressed = event.metaKey || event.ctrlKey;
+      if (!isModifierPressed) {
+        return;
+      }
+
+      if (event.key.toLowerCase() === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+
+      if (
+        event.key.toLowerCase() === "y" ||
+        (event.key.toLowerCase() === "z" && event.shiftKey)
+      ) {
+        event.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [redo, undo]);
 
   const saveWorkflow = () => {
     startSaveTransition(async () => {
@@ -130,6 +168,37 @@ export default function Home() {
     });
   };
 
+  const runSelectedNodes = () => {
+    if (selectedNodeIds.length === 0) {
+      return;
+    }
+
+    startSelectedRunTransition(async () => {
+      const response = await runSelectedNodesAction({
+        workflowId: workflowId ?? undefined,
+        name: workflowName,
+        selectedNodeIds,
+        graph: {
+          nodes: nodes as WorkflowGraph["nodes"],
+          edges: edges as WorkflowGraph["edges"],
+        },
+      });
+
+      if (response.workflowId) {
+        setWorkflowMeta(response.workflowId, workflowName);
+      }
+
+      if (response.nodes && response.edges) {
+        loadWorkflowGraph(
+          response.workflowId,
+          workflowName,
+          response.nodes,
+          response.edges
+        );
+      }
+    });
+  };
+
   const exportWorkflow = () => {
     const blob = new Blob(
       [
@@ -153,6 +222,16 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
+  const loadSampleWorkflow = () => {
+    const sample = createSampleWorkflowGraph();
+    loadWorkflowGraph(
+      workflowId ?? "sample-workflow",
+      "Sample workflow",
+      sample.nodes,
+      sample.edges
+    );
+  };
+
   const importWorkflow = async (file: File) => {
     const content = await file.text();
     const parsed = JSON.parse(content) as unknown;
@@ -167,6 +246,29 @@ export default function Home() {
       graph: imported,
     });
     loadWorkflowGraph(response.workflowId, response.name, imported.nodes, imported.edges);
+  };
+
+  const addNodeFromKind = (kind: WorkflowNodeKind, position?: { x: number; y: number }) => {
+    addNode({
+      id: getId(),
+      position: position ?? { x: 400, y: 200 },
+      data: createNodeData(kind),
+      type: kind,
+    });
+  };
+
+  const handleCanvasDrop = (event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    const kind = event.dataTransfer.getData("application/reactflow") as WorkflowNodeKind;
+    if (!kind || !reactFlowInstance) {
+      return;
+    }
+
+    const position = reactFlowInstance.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    addNodeFromKind(kind, position);
   };
 
   return (
@@ -189,6 +291,29 @@ export default function Home() {
           >
             {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             Save
+          </button>
+          <button
+            onClick={undo}
+            disabled={!canUndo || isBootstrapping}
+            className="rounded-md bg-slate-800 px-3 py-1.5 text-white transition-colors hover:bg-slate-700 disabled:bg-slate-900 flex items-center gap-2"
+          >
+            <Undo2 size={14} />
+            Undo
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo || isBootstrapping}
+            className="rounded-md bg-slate-800 px-3 py-1.5 text-white transition-colors hover:bg-slate-700 disabled:bg-slate-900 flex items-center gap-2"
+          >
+            <Redo2 size={14} />
+            Redo
+          </button>
+          <button
+            onClick={loadSampleWorkflow}
+            disabled={isBootstrapping}
+            className="rounded-md bg-slate-800 px-3 py-1.5 text-white transition-colors hover:bg-slate-700 disabled:bg-slate-900"
+          >
+            Load Sample
           </button>
           <button
             onClick={exportWorkflow}
@@ -220,6 +345,18 @@ export default function Home() {
               event.target.value = "";
             }}
           />
+          <button
+            onClick={runSelectedNodes}
+            disabled={isRunningSelected || isBootstrapping || selectedNodeIds.length === 0}
+            className="rounded-md bg-sky-600 px-3 py-1.5 text-white transition-colors hover:bg-sky-700 disabled:bg-slate-800 flex items-center gap-2 font-medium"
+          >
+            {isRunningSelected ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Play size={14} fill="currentColor" />
+            )}
+            Run Selected ({selectedNodeIds.length})
+          </button>
           <button
             onClick={runWorkflow}
             disabled={isRunning || isBootstrapping}
@@ -264,15 +401,13 @@ export default function Home() {
             ).map((kind) => (
               <button
                 key={kind}
-                className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100"
-                onClick={() =>
-                  addNode({
-                    id: getId(),
-                    position: { x: 400, y: 200 },
-                    data: createNodeData(kind),
-                    type: kind,
-                  })
-                }
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData("application/reactflow", kind);
+                  event.dataTransfer.effectAllowed = "move";
+                }}
+                className="w-full rounded-md bg-slate-800 px-3 py-2 text-left text-slate-100 cursor-grab active:cursor-grabbing"
+                onClick={() => addNodeFromKind(kind)}
               >
                 {createNodeData(kind).label}
               </button>
@@ -280,7 +415,14 @@ export default function Home() {
           </div>
         </aside>
 
-        <section className="flex-1 border-r border-slate-800 bg-slate-950/70">
+        <section
+          className="flex-1 border-r border-slate-800 bg-slate-950/70"
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={handleCanvasDrop}
+        >
           <Show when="signed-in">
             {isBootstrapping ? (
               <div className="flex h-full items-center justify-center text-sm text-slate-400">
@@ -288,12 +430,19 @@ export default function Home() {
               </div>
             ) : (
               <ReactFlow
+                onInit={setReactFlowInstance}
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onEdgeDoubleClick={(_, edge) => removeEdgeById(edge.id)}
+                isValidConnection={isValidConnection}
+                defaultEdgeOptions={{
+                  animated: true,
+                  style: { stroke: "#a855f7", strokeWidth: 2 },
+                }}
                 fitView
               >
                 <MiniMap />
@@ -310,6 +459,9 @@ export default function Home() {
         </section>
 
         <aside className="w-96 border-l border-slate-800 bg-slate-900/60 px-4 py-6">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+            Double-click any edge to remove it.
+          </div>
           <HistorySidebar />
         </aside>
       </main>

@@ -18,8 +18,16 @@ type GraphNodeLike = {
 };
 
 type GraphEdgeLike = {
+  id?: string;
   source: string;
   target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+};
+
+type GraphConnectionLike = {
+  source?: string | null;
+  target?: string | null;
   targetHandle?: string | null;
 };
 
@@ -92,7 +100,7 @@ export function createNodeData(kind: WorkflowNodeKind) {
       return {
         label: "Extract Frame",
         description: "Extract a frame from a video using FFmpeg.",
-        timestamp: 1,
+        timestamp: "1",
       };
   }
 }
@@ -100,50 +108,84 @@ export function createNodeData(kind: WorkflowNodeKind) {
 export function createSampleWorkflowGraph(): WorkflowGraph {
   const nodes: WorkflowGraph["nodes"] = [
     {
-      id: "text-1",
+      id: "text-system-1",
       type: "text",
-      position: { x: 120, y: 80 },
+      position: { x: 80, y: 60 },
       data: {
         ...createNodeData("text"),
-        text: "Describe the cropped image in one sentence.",
+        text: "You are a professional marketing copywriter. Generate a compelling one-paragraph product description.",
+      },
+    },
+    {
+      id: "text-user-1",
+      type: "text",
+      position: { x: 80, y: 250 },
+      data: {
+        ...createNodeData("text"),
+        text: "Product: Wireless Bluetooth Headphones. Features: Noise cancellation, 30-hour battery, foldable design.",
+      },
+    },
+    {
+      id: "text-system-2",
+      type: "text",
+      position: { x: 760, y: 60 },
+      data: {
+        ...createNodeData("text"),
+        text: "You are a social media manager. Create a tweet-length marketing post based on the product image and video frame.",
       },
     },
     {
       id: "upload-image-1",
       type: "uploadImage",
-      position: { x: 120, y: 280 },
+      position: { x: 80, y: 470 },
       data: createNodeData("uploadImage"),
     },
     {
       id: "crop-image-1",
       type: "cropImage",
-      position: { x: 460, y: 280 },
+      position: { x: 430, y: 470 },
       data: createNodeData("cropImage"),
     },
     {
       id: "llm-1",
       type: "llm",
-      position: { x: 820, y: 160 },
+      position: { x: 760, y: 300 },
       data: createNodeData("llm"),
     },
     {
       id: "upload-video-1",
       type: "uploadVideo",
-      position: { x: 120, y: 540 },
+      position: { x: 80, y: 810 },
       data: createNodeData("uploadVideo"),
     },
     {
       id: "extract-frame-1",
       type: "extractFrame",
-      position: { x: 460, y: 540 },
-      data: createNodeData("extractFrame"),
+      position: { x: 430, y: 810 },
+      data: {
+        ...createNodeData("extractFrame"),
+        timestamp: "50%",
+      },
+    },
+    {
+      id: "llm-2",
+      type: "llm",
+      position: { x: 1160, y: 520 },
+      data: createNodeData("llm"),
     },
   ];
 
   const edges: WorkflowGraph["edges"] = [
     {
-      id: "edge-text-llm",
-      source: "text-1",
+      id: "edge-text-system-1-llm-1",
+      source: "text-system-1",
+      target: "llm-1",
+      targetHandle: "system",
+      animated: true,
+    },
+    {
+      id: "edge-text-user-1-llm-1",
+      source: "text-user-1",
       target: "llm-1",
       targetHandle: "user",
       animated: true,
@@ -169,6 +211,34 @@ export function createSampleWorkflowGraph(): WorkflowGraph {
       targetHandle: "video",
       animated: true,
     },
+    {
+      id: "edge-text-system-2-llm-2",
+      source: "text-system-2",
+      target: "llm-2",
+      targetHandle: "system",
+      animated: true,
+    },
+    {
+      id: "edge-llm-1-llm-2",
+      source: "llm-1",
+      target: "llm-2",
+      targetHandle: "user",
+      animated: true,
+    },
+    {
+      id: "edge-crop-llm-2",
+      source: "crop-image-1",
+      target: "llm-2",
+      targetHandle: "image",
+      animated: true,
+    },
+    {
+      id: "edge-extract-llm-2",
+      source: "extract-frame-1",
+      target: "llm-2",
+      targetHandle: "image",
+      animated: true,
+    },
   ];
 
   return {
@@ -183,34 +253,205 @@ export function syncDataFlow<T extends GraphNodeLike, E extends GraphEdgeLike>(
 ): T[] {
   return nodes.map((targetNode) => {
     const incomingEdges = edges.filter((edge) => edge.target === targetNode.id);
-    const newData = { ...targetNode.data } as Record<string, unknown>;
+    const newData = {
+      ...targetNode.data,
+      imageInputs: [],
+      systemPromptConnected: false,
+      userPromptConnected: false,
+      imageInputConnected: false,
+      inputImageConnected: false,
+      inputVideoConnected: false,
+      xConnected: false,
+      yConnected: false,
+      widthConnected: false,
+      heightConnected: false,
+      timestampConnected: false,
+    } as Record<string, unknown>;
 
     for (const edge of incomingEdges) {
       const sourceNode = nodes.find((node) => node.id === edge.source);
       if (!sourceNode) continue;
 
-      if (sourceNode.type === "text") {
-        if (edge.targetHandle === "system") newData.systemPrompt = sourceNode.data.text;
-        if (edge.targetHandle === "user") newData.userPrompt = sourceNode.data.text;
+      const textValue = getNodeTextOutput(sourceNode);
+
+      if (textValue !== undefined) {
+        if (edge.targetHandle === "system") {
+          newData.systemPrompt = textValue;
+          newData.systemPromptConnected = true;
+        }
+        if (edge.targetHandle === "user") {
+          newData.userPrompt = textValue;
+          newData.userPromptConnected = true;
+        }
+        if (edge.targetHandle === "x") {
+          newData.x = parseConnectedNumber(textValue, newData.x, 0);
+          newData.xConnected = true;
+        }
+        if (edge.targetHandle === "y") {
+          newData.y = parseConnectedNumber(textValue, newData.y, 0);
+          newData.yConnected = true;
+        }
+        if (edge.targetHandle === "width") {
+          newData.width = parseConnectedNumber(textValue, newData.width, 80);
+          newData.widthConnected = true;
+        }
+        if (edge.targetHandle === "height") {
+          newData.height = parseConnectedNumber(textValue, newData.height, 80);
+          newData.heightConnected = true;
+        }
+        if (edge.targetHandle === "timestamp") {
+          newData.timestamp = textValue;
+          newData.timestampConnected = true;
+        }
       }
 
       if (sourceNode.type === "uploadImage") {
         if (edge.targetHandle === "image") {
-          newData.inputImageUrl = sourceNode.data.imageUrl;
-          newData.imageInput = sourceNode.data.imageUrl;
+          const nextImage = sourceNode.data.imageUrl;
+          newData.inputImageUrl = nextImage;
+          newData.imageInput = nextImage;
+          if (typeof nextImage === "string" && nextImage.length > 0) {
+            newData.imageInputs = [...(newData.imageInputs as string[]), nextImage];
+          }
+          newData.inputImageConnected = true;
+          newData.imageInputConnected = true;
         }
       }
 
       if (sourceNode.type === "uploadVideo" && edge.targetHandle === "video") {
         newData.inputVideoUrl = sourceNode.data.videoUrl;
+        newData.inputVideoConnected = true;
       }
 
       if ((sourceNode.type === "cropImage" || sourceNode.type === "extractFrame") && edge.targetHandle === "image") {
-        newData.inputImageUrl = sourceNode.data.outputUrl;
-        newData.imageInput = sourceNode.data.outputUrl;
+        const nextImage = sourceNode.data.outputUrl;
+        newData.inputImageUrl = nextImage;
+        newData.imageInput = nextImage;
+        if (typeof nextImage === "string" && nextImage.length > 0) {
+          newData.imageInputs = [...(newData.imageInputs as string[]), nextImage];
+        }
+        newData.inputImageConnected = true;
+        newData.imageInputConnected = true;
       }
     }
 
     return { ...targetNode, data: newData };
   });
+}
+
+function getNodeTextOutput(node: GraphNodeLike) {
+  if (node.type === "text" && typeof node.data.text === "string") {
+    return node.data.text;
+  }
+
+  if (node.type === "llm") {
+    if (typeof node.data.outputText === "string") {
+      return node.data.outputText;
+    }
+
+    if (typeof node.data.result === "string" && !node.data.result.startsWith("Error:")) {
+      return node.data.result;
+    }
+  }
+
+  return undefined;
+}
+
+function parseConnectedNumber(
+  value: string,
+  currentValue: unknown,
+  fallback: number
+) {
+  const parsed = Number.parseFloat(value);
+  if (Number.isFinite(parsed)) {
+    return parsed;
+  }
+
+  return typeof currentValue === "number" ? currentValue : fallback;
+}
+
+export function isValidWorkflowConnection<
+  T extends GraphNodeLike,
+  E extends GraphConnectionLike,
+>(connection: E, nodes: T[]) {
+  if (!connection.source || !connection.target || !connection.targetHandle) {
+    return false;
+  }
+
+  if (connection.source === connection.target) {
+    return false;
+  }
+
+  const sourceNode = nodes.find((node) => node.id === connection.source);
+  const targetNode = nodes.find((node) => node.id === connection.target);
+
+  if (!sourceNode || !targetNode || !sourceNode.type || !targetNode.type) {
+    return false;
+  }
+
+  const targetHandle = connection.targetHandle;
+
+  switch (sourceNode.type) {
+    case "text":
+      return (
+        (targetNode.type === "llm" && (targetHandle === "system" || targetHandle === "user")) ||
+        (targetNode.type === "cropImage" &&
+          (targetHandle === "x" ||
+            targetHandle === "y" ||
+            targetHandle === "width" ||
+            targetHandle === "height")) ||
+        (targetNode.type === "extractFrame" && targetHandle === "timestamp")
+      );
+    case "llm":
+      return targetNode.type === "llm" && (targetHandle === "system" || targetHandle === "user");
+    case "uploadImage":
+      return (
+        (targetNode.type === "cropImage" && targetHandle === "image") ||
+        (targetNode.type === "llm" && targetHandle === "image")
+      );
+    case "cropImage":
+    case "extractFrame":
+      return targetNode.type === "llm" && targetHandle === "image";
+    case "uploadVideo":
+      return targetNode.type === "extractFrame" && targetHandle === "video";
+    default:
+      return false;
+  }
+}
+
+export function wouldCreateCycle<
+  E extends GraphConnectionLike,
+  T extends GraphEdgeLike,
+>(connection: E, edges: T[]) {
+  if (!connection.source || !connection.target) {
+    return false;
+  }
+
+  const adjacency = new Map<string, string[]>();
+
+  for (const edge of edges) {
+    const neighbors = adjacency.get(edge.source) ?? [];
+    neighbors.push(edge.target);
+    adjacency.set(edge.source, neighbors);
+  }
+
+  const stack = [connection.target];
+  const visited = new Set<string>();
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || visited.has(current)) {
+      continue;
+    }
+
+    if (current === connection.source) {
+      return true;
+    }
+
+    visited.add(current);
+    const neighbors = adjacency.get(current) ?? [];
+    stack.push(...neighbors);
+  }
+
+  return false;
 }

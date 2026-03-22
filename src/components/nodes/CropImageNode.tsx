@@ -11,6 +11,11 @@ type CropImageNodeData = {
   y?: number;
   width?: number;
   height?: number;
+  inputImageConnected?: boolean;
+  xConnected?: boolean;
+  yConnected?: boolean;
+  widthConnected?: boolean;
+  heightConnected?: boolean;
   isRunning?: boolean;
   result?: string;
 };
@@ -51,7 +56,8 @@ export function CropImageNode({ id, data }: { id: string; data: CropImageNodeDat
   };
 
   const updateParam = (key: string, val: string) => {
-    updateNodeData(id, { [key]: parseInt(val) || 0 });
+    const parsed = Number.parseFloat(val);
+    updateNodeData(id, { [key]: Number.isFinite(parsed) ? parsed : 0 });
   };
 
   return (
@@ -89,23 +95,27 @@ export function CropImageNode({ id, data }: { id: string; data: CropImageNodeDat
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-400 font-medium">X (%)</label>
-          <input type="number" value={data.x || 0} onChange={(e) => updateParam('x', e.target.value)} className="w-full bg-slate-950/50 border border-slate-700 rounded p-1 text-xs text-slate-200 focus:outline-none focus:border-pink-500" />
+          <input type="number" value={data.x || 0} onChange={(e) => updateParam('x', e.target.value)} disabled={Boolean(data.xConnected)} className="w-full bg-slate-950/50 border border-slate-700 rounded p-1 text-xs text-slate-200 focus:outline-none focus:border-pink-500 disabled:cursor-not-allowed disabled:opacity-50" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-400 font-medium">Y (%)</label>
-          <input type="number" value={data.y || 0} onChange={(e) => updateParam('y', e.target.value)} className="w-full bg-slate-950/50 border border-slate-700 rounded p-1 text-xs text-slate-200 focus:outline-none focus:border-pink-500" />
+          <input type="number" value={data.y || 0} onChange={(e) => updateParam('y', e.target.value)} disabled={Boolean(data.yConnected)} className="w-full bg-slate-950/50 border border-slate-700 rounded p-1 text-xs text-slate-200 focus:outline-none focus:border-pink-500 disabled:cursor-not-allowed disabled:opacity-50" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-400 font-medium">Width (%)</label>
-          <input type="number" value={data.width || 80} onChange={(e) => updateParam('width', e.target.value)} className="w-full bg-slate-950/50 border border-slate-700 rounded p-1 text-xs text-slate-200 focus:outline-none focus:border-pink-500" />
+          <input type="number" value={data.width || 80} onChange={(e) => updateParam('width', e.target.value)} disabled={Boolean(data.widthConnected)} className="w-full bg-slate-950/50 border border-slate-700 rounded p-1 text-xs text-slate-200 focus:outline-none focus:border-pink-500 disabled:cursor-not-allowed disabled:opacity-50" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-400 font-medium">Height (%)</label>
-          <input type="number" value={data.height || 80} onChange={(e) => updateParam('height', e.target.value)} className="w-full bg-slate-950/50 border border-slate-700 rounded p-1 text-xs text-slate-200 focus:outline-none focus:border-pink-500" />
+          <input type="number" value={data.height || 80} onChange={(e) => updateParam('height', e.target.value)} disabled={Boolean(data.heightConnected)} className="w-full bg-slate-950/50 border border-slate-700 rounded p-1 text-xs text-slate-200 focus:outline-none focus:border-pink-500 disabled:cursor-not-allowed disabled:opacity-50" />
         </div>
       </div>
 
-      <Handle type="target" position={Position.Left} id="image" className="!w-3 !h-3 !bg-emerald-500 !border-2 !border-slate-900" />
+      <Handle type="target" position={Position.Left} id="image" style={{ top: "18%" }} className="!w-3 !h-3 !bg-emerald-500 !border-2 !border-slate-900" />
+      <Handle type="target" position={Position.Left} id="x" style={{ top: "60%" }} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-slate-900" />
+      <Handle type="target" position={Position.Left} id="y" style={{ top: "72%" }} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-slate-900" />
+      <Handle type="target" position={Position.Left} id="width" style={{ top: "84%" }} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-slate-900" />
+      <Handle type="target" position={Position.Left} id="height" style={{ top: "96%" }} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-slate-900" />
       <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-pink-500 !border-2 !border-slate-900" />
     </div>
   );

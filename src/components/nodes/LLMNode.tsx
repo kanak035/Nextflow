@@ -11,6 +11,7 @@ type LLMNodeData = {
   systemPrompt?: string;
   userPrompt?: string;
   imageInput?: string;
+  imageInputs?: string[];
   isRunning?: boolean;
   result?: string;
 };
@@ -18,6 +19,7 @@ type LLMNodeData = {
 export function LLMNode({ id, data }: { id: string; data: LLMNodeData }) {
   const [isPending, startTransition] = useTransition();
   const { updateNodeData, workflowId } = useWorkflowStore();
+  const imageCount = data.imageInputs?.length ?? (data.imageInput ? 1 : 0);
 
   const handleRun = async () => {
     updateNodeData(id, { isRunning: true, result: "Calling Gemini..." });
@@ -28,7 +30,7 @@ export function LLMNode({ id, data }: { id: string; data: LLMNodeData }) {
         model: data.model || DEFAULT_MODEL,
         systemPrompt: data.systemPrompt || "",
         userPrompt: data.userPrompt || "",
-        imageUrl: data.imageInput
+        imageUrls: data.imageInputs?.length ? data.imageInputs : data.imageInput ? [data.imageInput] : []
       });
 
       if (result.success && result.text) {
@@ -73,7 +75,7 @@ export function LLMNode({ id, data }: { id: string; data: LLMNodeData }) {
         <div className="text-[9px] text-slate-500 flex flex-col gap-1 bg-slate-950/30 p-2 rounded">
           <div className={`${data.systemPrompt ? 'text-blue-400' : 'text-slate-600'}`}>• System Prompt: {data.systemPrompt ? 'Connected' : 'Empty'}</div>
           <div className={`${data.userPrompt ? 'text-blue-400' : 'text-slate-600'}`}>• User Prompt: {data.userPrompt ? 'Connected' : 'Empty'}</div>
-          <div className={`${data.imageInput ? 'text-emerald-400' : 'text-slate-600'}`}>• Image Input: {data.imageInput ? 'Detected' : 'Empty'}</div>
+          <div className={`${imageCount > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>• Image Input: {imageCount > 0 ? `${imageCount} connected` : 'Empty'}</div>
         </div>
 
         {data.result && (

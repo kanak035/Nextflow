@@ -7,7 +7,9 @@ import { useWorkflowStore } from "../../lib/store";
 type ExtractFrameNodeData = {
   inputVideoUrl?: string;
   outputUrl?: string;
-  timestamp?: number;
+  timestamp?: string | number;
+  inputVideoConnected?: boolean;
+  timestampConnected?: boolean;
   isRunning?: boolean;
   result?: string;
 };
@@ -26,7 +28,7 @@ export function ExtractFrameNode({ id, data }: { id: string; data: ExtractFrameN
         workflowId: workflowId ?? undefined,
         nodeId: id,
         videoUrl: inputVideoUrl,
-        timestamp: data.timestamp || 1,
+        timestamp: String(data.timestamp || "1"),
       });
 
       if (result.success && result.outputUrl) {
@@ -70,7 +72,7 @@ export function ExtractFrameNode({ id, data }: { id: string; data: ExtractFrameN
           </>
         ) : data.inputVideoUrl ? (
           <div className="text-[9px] text-orange-400/70 italic px-2">
-            Video Connected: ready to extract frame at {data.timestamp || 1}s
+            Video Connected: ready to extract frame at {String(data.timestamp || "1")}
           </div>
         ) : (
           <span className="text-[9px] text-slate-600">Waiting for Video Input...</span>
@@ -78,18 +80,20 @@ export function ExtractFrameNode({ id, data }: { id: string; data: ExtractFrameN
       </div>
 
       <div className="flex flex-col gap-1 mt-2">
-        <label className="text-[10px] text-slate-400 font-medium">Timestamp (seconds)</label>
+        <label className="text-[10px] text-slate-400 font-medium">Timestamp (seconds or %)</label>
         <input
-          type="number"
-          value={data.timestamp || 1}
+          type="text"
+          value={String(data.timestamp || "1")}
           onChange={(event) =>
-            updateNodeData(id, { timestamp: parseInt(event.target.value, 10) || 1 })
+            updateNodeData(id, { timestamp: event.target.value || "1" })
           }
-          className="w-full bg-slate-950/50 border border-slate-700 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-orange-500"
+          disabled={Boolean(data.timestampConnected)}
+          className="w-full bg-slate-950/50 border border-slate-700 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
 
-      <Handle type="target" position={Position.Left} id="video" className="!w-3 !h-3 !bg-amber-500 !border-2 !border-slate-900" />
+      <Handle type="target" position={Position.Left} id="video" style={{ top: "34%" }} className="!w-3 !h-3 !bg-amber-500 !border-2 !border-slate-900" />
+      <Handle type="target" position={Position.Left} id="timestamp" style={{ top: "86%" }} className="!w-3 !h-3 !bg-blue-500 !border-2 !border-slate-900" />
       <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-orange-500 !border-2 !border-slate-900" />
     </div>
   );

@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getExecutionOrder } from "@/lib/engine";
+import { getExecutionBatches } from "@/lib/engine";
 import {
   parseWorkflowGraph,
   saveWorkflowForOwner,
@@ -74,7 +74,13 @@ function getNodeTaskPayload(node: WorkflowGraphNode, workflowRunId: string, node
         model: String(node.data.model ?? DEFAULT_LLM_MODEL),
         systemPrompt: String(node.data.systemPrompt ?? ""),
         userPrompt: String(node.data.userPrompt ?? ""),
-        imageUrl: typeof node.data.imageInput === "string" ? node.data.imageInput : undefined,
+        imageUrls: Array.isArray(node.data.imageInputs)
+          ? node.data.imageInputs.filter(
+              (value): value is string => typeof value === "string" && value.length > 0
+            )
+          : typeof node.data.imageInput === "string" && node.data.imageInput.length > 0
+            ? [node.data.imageInput]
+            : [],
         workflowRunId,
         nodeRunId,
       };
@@ -93,7 +99,7 @@ function getNodeTaskPayload(node: WorkflowGraphNode, workflowRunId: string, node
       return {
         nodeId: node.id,
         videoUrl: String(node.data.inputVideoUrl ?? ""),
-        timestamp: Number(node.data.timestamp ?? 1),
+        timestamp: String(node.data.timestamp ?? "1"),
         workflowRunId,
         nodeRunId,
       };
@@ -109,7 +115,12 @@ function nodeHasRequiredInput(node: WorkflowGraphNode) {
     case "uploadVideo":
       return typeof node.data.videoUrl === "string" && node.data.videoUrl.length > 0;
     case "llm":
-      return Boolean(node.data.userPrompt || node.data.systemPrompt || node.data.imageInput);
+      return Boolean(
+        node.data.userPrompt ||
+          node.data.systemPrompt ||
+          node.data.imageInput ||
+          (Array.isArray(node.data.imageInputs) && node.data.imageInputs.length > 0)
+      );
     case "cropImage":
       return typeof node.data.inputImageUrl === "string" && node.data.inputImageUrl.length > 0;
     case "extractFrame":
@@ -358,13 +369,175 @@ async function runSingleNode(node: WorkflowGraphNode, workflowId?: string) {
   }
 }
 
+async function executeWorkflowGraph(params: {
+  workflowId?: string;
+  name: string;
+  graph: WorkflowGraph;
+  selectedNodeIds?: string[];
+}) {
+  const { userId } = await auth();
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
+  const graph = parseWorkflowGraph(params.graph);
+  const workflow = await saveWorkflowForOwner(userId, {
+    workflowId: params.workflowId,
+    name: params.name,
+    graph,
+  });
+
+  const selectedNodeSet = params.selectedNodeIds?.length
+    ? new Set(params.selectedNodeIds)
+    : undefined;
+  const executionBatches = getExecutionBatches(graph.nodes, graph.edges, selectedNodeSet);
+
+  const startedAt = Date.now();
+  const workflowRun = await prisma.workflowRun.create({
+    data: {
+      workflowId: workflow.id,
+      ownerId: userId,
+      scope: selectedNodeSet ? "PARTIAL" : "FULL",
+      status: "RUNNING",
+    },
+  });
+
+  let workingNodes = syncDataFlow(graph.nodes, graph.edges);
+  let hasFailure = false;
+
+  for (const batch of executionBatches) {
+    const scopedBatch = batch.map((node) => {
+      const latestNode = workingNodes.find((candidate) => candidate.id === node.id);
+      return (latestNode ?? node) as WorkflowGraphNode;
+    });
+
+    const runnableNodes: WorkflowGraphNode[] = [];
+    const skippedNodeIds = new Set<string>();
+
+    for (const node of scopedBatch) {
+      if (nodeHasRequiredInput(node)) {
+        runnableNodes.push(node);
+      } else {
+        skippedNodeIds.add(node.id);
+      }
+    }
+
+    if (skippedNodeIds.size > 0) {
+      workingNodes = syncDataFlow(
+        workingNodes.map((candidate) =>
+          skippedNodeIds.has(candidate.id)
+            ? {
+                ...candidate,
+                data: {
+                  ...candidate.data,
+                  result: "Skipped: missing input",
+                  status: "SKIPPED",
+                },
+              }
+            : candidate
+        ),
+        graph.edges
+      );
+    }
+
+    const results = await Promise.all(
+      runnableNodes.map(async (node) => {
+        try {
+          const result = await triggerTrackedNodeRun(workflowRun.id, node);
+          return {
+            nodeId: node.id,
+            ok: true as const,
+            nodeRun: result.nodeRun,
+          };
+        } catch (error) {
+          return {
+            nodeId: node.id,
+            ok: false as const,
+            error,
+          };
+        }
+      })
+    );
+
+    const completedRunsByNodeId = new Map<string, NonNullable<NodeRunRecord>>();
+    const failedRunsByNodeId = new Map<string, string>();
+
+    for (const result of results) {
+      if (result.ok) {
+        const nodeRun = result.nodeRun;
+        completedRunsByNodeId.set(result.nodeId, nodeRun);
+        if (nodeRun.status !== "SUCCESS") {
+          hasFailure = true;
+        }
+      } else {
+        hasFailure = true;
+        failedRunsByNodeId.set(
+          result.nodeId,
+          result.error instanceof Error ? result.error.message : String(result.error)
+        );
+      }
+    }
+
+    workingNodes = syncDataFlow(
+      workingNodes.map((candidate) => {
+        const nodeRun = completedRunsByNodeId.get(candidate.id);
+        if (nodeRun) {
+          return applyNodeRunOutput(candidate, nodeRun);
+        }
+
+        const failedMessage = failedRunsByNodeId.get(candidate.id);
+        if (failedMessage) {
+          return {
+            ...candidate,
+            data: {
+              ...candidate.data,
+              result: `Error: ${failedMessage}`,
+              status: "FAILED",
+            },
+          };
+        }
+
+        return candidate;
+      }),
+      graph.edges
+    );
+  }
+
+  await updateWorkflowRunStatus(
+    workflowRun.id,
+    hasFailure ? "PARTIAL" : "SUCCESS",
+    startedAt,
+    hasFailure ? "One or more nodes failed during execution." : undefined
+  );
+
+  await prisma.workflow.update({
+    where: { id: workflow.id },
+    data: {
+      graph: {
+        nodes: workingNodes,
+        edges: graph.edges,
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  revalidatePath("/");
+
+  return {
+    success: !hasFailure,
+    workflowId: workflow.id,
+    workflowRunId: workflowRun.id,
+    nodes: workingNodes,
+    edges: graph.edges,
+  };
+}
+
 export async function runLLMNodeAction(payload: {
   workflowId?: string;
   nodeId: string;
   model: string;
   systemPrompt: string;
   userPrompt: string;
-  imageUrl?: string;
+  imageUrls?: string[];
 }) {
   return runSingleNode(
     {
@@ -375,7 +548,8 @@ export async function runLLMNodeAction(payload: {
         model: payload.model,
         systemPrompt: payload.systemPrompt,
         userPrompt: payload.userPrompt,
-        imageInput: payload.imageUrl,
+        imageInput: payload.imageUrls?.[0],
+        imageInputs: payload.imageUrls ?? [],
       },
     },
     payload.workflowId
@@ -412,7 +586,7 @@ export async function runExtractFrameAction(payload: {
   workflowId?: string;
   nodeId: string;
   videoUrl: string;
-  timestamp: number;
+  timestamp: string;
 }) {
   return runSingleNode(
     {
@@ -433,112 +607,14 @@ export async function runWorkflowAction(payload: {
   name: string;
   graph: WorkflowGraph;
 }) {
-  const { userId } = await auth();
-  if (!userId) {
-    throw new Error("Unauthorized");
-  }
+  return executeWorkflowGraph(payload);
+}
 
-  const graph = parseWorkflowGraph(payload.graph);
-  const workflow = await saveWorkflowForOwner(userId, {
-    workflowId: payload.workflowId,
-    name: payload.name,
-    graph,
-  });
-
-  const startedAt = Date.now();
-  const workflowRun = await prisma.workflowRun.create({
-    data: {
-      workflowId: workflow.id,
-      ownerId: userId,
-      scope: "FULL",
-      status: "RUNNING",
-    },
-  });
-
-  let workingNodes = syncDataFlow(graph.nodes, graph.edges);
-  let hasFailure = false;
-
-  for (const node of getExecutionOrder(workingNodes, graph.edges) as WorkflowGraphNode[]) {
-    if (!nodeHasRequiredInput(node)) {
-      workingNodes = syncDataFlow(
-        workingNodes.map((candidate) =>
-          candidate.id === node.id
-            ? {
-                ...candidate,
-                data: {
-                  ...candidate.data,
-                  result: "Skipped: missing input",
-                  status: "SKIPPED",
-                },
-              }
-            : candidate
-        ),
-        graph.edges
-      );
-      continue;
-    }
-
-    try {
-      const { nodeRun } = await triggerTrackedNodeRun(workflowRun.id, node);
-
-      if (nodeRun.status !== "SUCCESS") {
-        hasFailure = true;
-      }
-
-      workingNodes = syncDataFlow(
-        workingNodes.map((candidate) =>
-          candidate.id === node.id && nodeRun
-            ? applyNodeRunOutput(candidate, nodeRun)
-            : candidate
-        ),
-        graph.edges
-      );
-    } catch (error) {
-      hasFailure = true;
-      const message = error instanceof Error ? error.message : String(error);
-      workingNodes = syncDataFlow(
-        workingNodes.map((candidate) =>
-          candidate.id === node.id
-            ? {
-                ...candidate,
-                data: {
-                  ...candidate.data,
-                  result: `Error: ${message}`,
-                  status: "FAILED",
-                },
-              }
-            : candidate
-        ),
-        graph.edges
-      );
-      break;
-    }
-  }
-
-  await updateWorkflowRunStatus(
-    workflowRun.id,
-    hasFailure ? "PARTIAL" : "SUCCESS",
-    startedAt,
-    hasFailure ? "One or more nodes failed during execution." : undefined
-  );
-
-  await prisma.workflow.update({
-    where: { id: workflow.id },
-    data: {
-      graph: {
-        nodes: workingNodes,
-        edges: graph.edges,
-      } as Prisma.InputJsonValue,
-    },
-  });
-
-  revalidatePath("/");
-
-  return {
-    success: !hasFailure,
-    workflowId: workflow.id,
-    workflowRunId: workflowRun.id,
-    nodes: workingNodes,
-    edges: graph.edges,
-  };
+export async function runSelectedNodesAction(payload: {
+  workflowId?: string;
+  name: string;
+  selectedNodeIds: string[];
+  graph: WorkflowGraph;
+}) {
+  return executeWorkflowGraph(payload);
 }

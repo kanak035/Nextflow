@@ -75,7 +75,7 @@ export const geminiTask = task({
     model: string;
     systemPrompt: string;
     userPrompt: string;
-    imageUrl?: string;
+    imageUrls?: string[];
     workflowRunId: string;
     nodeRunId: string;
   }) => {
@@ -86,7 +86,7 @@ export const geminiTask = task({
         payload.model,
         payload.systemPrompt,
         payload.userPrompt,
-        payload.imageUrl
+        payload.imageUrls ?? []
       );
 
       await completeNodeRun(payload.nodeRunId, "SUCCESS", { text });
@@ -135,7 +135,7 @@ export const extractFrameTask = task({
   id: "extract-frame-task",
   run: async (payload: {
     videoUrl: string;
-    timestamp: number;
+    timestamp: string;
     workflowRunId: string;
     nodeRunId: string;
   }) => {
