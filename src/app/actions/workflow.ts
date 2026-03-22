@@ -311,13 +311,20 @@ export async function loadWorkflowAction() {
     return null;
   }
 
-  const workflow = await getOrCreateWorkflowForOwner(userId);
-  const graph = parseWorkflowGraph(workflow.graph);
-  return {
-    workflowId: workflow.id,
-    name: workflow.name,
-    graph,
-  };
+  try {
+    const workflow = await getOrCreateWorkflowForOwner(userId);
+    const graph = parseWorkflowGraph(workflow.graph);
+    return {
+      workflowId: workflow.id,
+      name: workflow.name,
+      graph,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      error: message,
+    };
+  }
 }
 
 export async function saveWorkflowAction(payload: {

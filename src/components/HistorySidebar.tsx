@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronRight, Clock, XCircle } from "lucide-react";
-import { getWorkflowHistoryAction } from "@/app/actions/history";
 
 type NodeRun = {
   id: string;
@@ -45,15 +44,41 @@ export function HistorySidebar() {
   const [history, setHistory] = useState<WorkflowRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function fetchHistory() {
-      const result = await getWorkflowHistoryAction();
-      if (!cancelled) {
-        setHistory(result as WorkflowRun[]);
-        setIsLoading(false);
+      try {
+        const response = await fetch("/api/history", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+
+        const result = (await response.json()) as WorkflowRun[] | { error?: string };
+
+        if (!cancelled) {
+          if (!response.ok || !Array.isArray(result)) {
+            setHistory([]);
+            setErrorMessage(
+              typeof result === "object" && result && "error" in result
+                ? result.error ?? "Failed to load workflow history"
+                : "Failed to load workflow history"
+            );
+          } else {
+            setHistory(result);
+            setErrorMessage(null);
+          }
+          setIsLoading(false);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setHistory([]);
+          setErrorMessage(error instanceof Error ? error.message : String(error));
+          setIsLoading(false);
+        }
       }
     }
 
@@ -74,6 +99,10 @@ export function HistorySidebar() {
       <div className="flex-1 overflow-y-auto pr-1 space-y-3">
         {isLoading ? (
           <div className="text-[10px] text-slate-600">Loading runs...</div>
+        ) : errorMessage ? (
+          <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-2 text-[10px] text-amber-200">
+            {errorMessage}
+          </div>
         ) : history.length === 0 ? (
           <div className="text-[10px] text-slate-600 italic">
             Run a workflow to see persisted run history here.

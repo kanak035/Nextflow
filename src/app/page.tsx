@@ -27,7 +27,6 @@ import {
   type WorkflowNodeKind,
 } from "../lib/workflow-graph";
 import {
-  loadWorkflowAction,
   runSelectedNodesAction,
   runWorkflowAction,
   saveWorkflowAction,
@@ -45,11 +44,28 @@ const nodeTypes: NodeTypes = {
 let nextId = 1000;
 const getId = () => `${nextId++}`;
 
+type WorkflowBootstrapResponse =
+  | {
+      workflowId: string;
+      name: string;
+      graph: WorkflowGraph;
+    }
+  | {
+      error?: string;
+    };
+
+function isWorkflowBootstrapResponse(
+  value: WorkflowBootstrapResponse
+): value is Extract<WorkflowBootstrapResponse, { workflowId: string }> {
+  return "workflowId" in value && "name" in value && "graph" in value;
+}
+
 export default function Home() {
   const [isRunning, startRunTransition] = useTransition();
   const [isSaving, startSaveTransition] = useTransition();
   const [isRunningSelected, startSelectedRunTransition] = useTransition();
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const {
@@ -77,18 +93,40 @@ export default function Home() {
     let cancelled = false;
 
     async function bootstrap() {
-      const workflow = await loadWorkflowAction();
+      try {
+        const response = await fetch("/api/workflows/current", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        const workflow = (await response.json()) as WorkflowBootstrapResponse;
 
-      if (!cancelled) {
-        if (workflow) {
-          loadWorkflowGraph(
-            workflow.workflowId,
-            workflow.name,
-            workflow.graph.nodes,
-            workflow.graph.edges
-          );
+        if (!cancelled) {
+          if (!response.ok || !workflow || !isWorkflowBootstrapResponse(workflow)) {
+            const sample = createSampleWorkflowGraph();
+            loadWorkflowGraph("sample-workflow", "Sample workflow", sample.nodes, sample.edges);
+            setBootstrapError(
+              workflow && "error" in workflow
+                ? workflow.error ?? "Unknown bootstrap error"
+                : "Failed to fetch workflow"
+            );
+          } else {
+            loadWorkflowGraph(
+              workflow.workflowId,
+              workflow.name,
+              workflow.graph.nodes,
+              workflow.graph.edges
+            );
+          }
+          setIsBootstrapping(false);
         }
-        setIsBootstrapping(false);
+      } catch (error) {
+        if (!cancelled) {
+          const sample = createSampleWorkflowGraph();
+          loadWorkflowGraph("sample-workflow", "Sample workflow", sample.nodes, sample.edges);
+          setBootstrapError(error instanceof Error ? error.message : String(error));
+          setIsBootstrapping(false);
+        }
       }
     }
 
@@ -383,6 +421,11 @@ export default function Home() {
           </Show>
         </div>
       </header>
+      {bootstrapError ? (
+        <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-[11px] text-amber-200">
+          Workflow bootstrap failed: {bootstrapError}. The app loaded a local sample instead. Check Vercel environment variables like `DATABASE_URL`.
+        </div>
+      ) : null}
       <main className="flex h-[calc(100vh-2.5rem)]">
         <aside className="w-64 border-r border-slate-800 bg-slate-900/60 px-4 py-6">
           <div className="mb-6 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">
