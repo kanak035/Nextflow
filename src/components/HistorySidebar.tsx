@@ -57,11 +57,6 @@ export function HistorySidebar() {
           cache: "no-store",
         });
 
-        if (!response.ok) {
-          const detail = await response.text();
-          throw new Error(`Server returned ${response.status}: ${detail.slice(0, 50)}`);
-        }
-
         const result = (await response.json()) as WorkflowRun[] | { error?: string };
 
         if (!cancelled) {

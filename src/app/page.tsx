@@ -99,18 +99,7 @@ export default function Home() {
           credentials: "same-origin",
           cache: "no-store",
         });
-        const rawResponse = await response.text();
-        let workflow: WorkflowBootstrapResponse | null = null;
-
-        if (rawResponse) {
-          try {
-            workflow = JSON.parse(rawResponse) as WorkflowBootstrapResponse;
-          } catch {
-            workflow = {
-              error: rawResponse.slice(0, 300) || "Failed to parse workflow bootstrap response",
-            };
-          }
-        }
+        const workflow = (await response.json()) as WorkflowBootstrapResponse;
 
         if (!cancelled) {
           if (!response.ok || !workflow || !isWorkflowBootstrapResponse(workflow)) {
