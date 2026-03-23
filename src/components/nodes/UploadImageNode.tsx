@@ -1,15 +1,17 @@
 import React, { useMemo } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "reactflow";
-import { ImagePlus } from "lucide-react";
+import { ImagePlus, Trash2, X } from "lucide-react";
 import Uppy from "@uppy/core";
 import Transloadit from "@uppy/transloadit";
 import Dashboard from "@uppy/react/dashboard";
+import { useWorkflowStore } from "../../lib/store";
 
 import "@uppy/core/css/style.min.css";
 import "@uppy/dashboard/css/style.min.css";
 
 export function UploadImageNode({ id, data }: NodeProps) {
   const { setNodes } = useReactFlow();
+  const { removeNode } = useWorkflowStore();
 
   const uppy = useMemo(() => {
     return new Uppy({
@@ -53,10 +55,40 @@ export function UploadImageNode({ id, data }: NodeProps) {
     }
   });
 
+  const removeImage = () => {
+    uppy.cancelAll();
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id === id) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              imageUrl: undefined,
+              result: undefined,
+              status: undefined,
+            },
+          };
+        }
+        return n;
+      })
+    );
+  };
+
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-900 shadow-lg p-3 w-80 min-w-[300px]">
-      <div className="flex items-center gap-2 mb-3 text-slate-200 font-semibold text-xs uppercase tracking-wider">
-        <ImagePlus size={16} className="text-emerald-400" /> Upload Image
+    <div className="relative rounded-xl border border-slate-700 bg-slate-900 shadow-lg p-3 w-80 min-w-[300px]">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs uppercase tracking-wider">
+          <ImagePlus size={16} className="text-emerald-400" /> Upload Image
+        </div>
+        <button
+          type="button"
+          onClick={() => removeNode(id)}
+          className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-rose-300"
+          aria-label="Remove node"
+        >
+          <X size={14} />
+        </button>
       </div>
 
       {!data?.imageUrl ? (
@@ -81,6 +113,14 @@ export function UploadImageNode({ id, data }: NodeProps) {
           <span className="text-[10px] text-slate-400 truncate mt-1">
             <strong>URL:</strong> {data.imageUrl}
           </span>
+          <button
+            type="button"
+            onClick={removeImage}
+            className="mt-2 inline-flex items-center justify-center gap-2 rounded-md bg-rose-500/10 px-3 py-2 text-[11px] font-medium text-rose-300 transition-colors hover:bg-rose-500/20"
+          >
+            <Trash2 size={12} />
+            Remove Image
+          </button>
         </div>
       )}
 

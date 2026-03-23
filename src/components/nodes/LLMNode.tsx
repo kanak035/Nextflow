@@ -1,5 +1,5 @@
 import { Handle, Position } from "reactflow";
-import { Sparkles, Loader2, Play } from "lucide-react";
+import { Sparkles, Loader2, Play, X } from "lucide-react";
 import { useTransition } from "react";
 import { runLLMNodeAction } from "../../app/actions/workflow";
 import { useWorkflowStore } from "../../lib/store";
@@ -18,7 +18,7 @@ type LLMNodeData = {
 
 export function LLMNode({ id, data }: { id: string; data: LLMNodeData }) {
   const [isPending, startTransition] = useTransition();
-  const { updateNodeData, workflowId } = useWorkflowStore();
+  const { updateNodeData, workflowId, removeNode } = useWorkflowStore();
   const imageCount = data.imageInputs?.length ?? (data.imageInput ? 1 : 0);
 
   const handleRun = async () => {
@@ -42,18 +42,28 @@ export function LLMNode({ id, data }: { id: string; data: LLMNodeData }) {
   };
 
   return (
-    <div className={`rounded-xl border border-slate-700 bg-slate-900 shadow-lg p-3 w-72 min-w-[280px] transition-all duration-500 ${data.isRunning ? 'node-glow-active-purple' : ''}`}>
+    <div className={`relative rounded-xl border border-slate-700 bg-slate-900 shadow-lg p-3 w-72 min-w-[280px] transition-all duration-500 ${data.isRunning ? 'node-glow-active-purple' : ''}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs uppercase tracking-wider">
           <Sparkles size={16} className="text-purple-400" /> Run Any LLM
         </div>
-        <button 
-          onClick={handleRun}
-          disabled={isPending}
-          className="bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 text-white p-1.5 rounded-md transition-colors flex items-center justify-center"
-        >
-          {isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => removeNode(id)}
+            className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-rose-300"
+            aria-label="Remove node"
+          >
+            <X size={14} />
+          </button>
+          <button 
+            onClick={handleRun}
+            disabled={isPending}
+            className="bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 text-white p-1.5 rounded-md transition-colors flex items-center justify-center"
+          >
+            {isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3">

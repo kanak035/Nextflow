@@ -1,5 +1,5 @@
 import { Handle, Position } from "reactflow";
-import { Scissors, Loader2, Play } from "lucide-react";
+import { Scissors, Loader2, Play, X } from "lucide-react";
 import { useTransition } from "react";
 import { runExtractFrameAction } from "../../app/actions/workflow";
 import { useWorkflowStore } from "../../lib/store";
@@ -16,7 +16,7 @@ type ExtractFrameNodeData = {
 
 export function ExtractFrameNode({ id, data }: { id: string; data: ExtractFrameNodeData }) {
   const [isPending, startTransition] = useTransition();
-  const { updateNodeData, workflowId } = useWorkflowStore();
+  const { updateNodeData, workflowId, removeNode } = useWorkflowStore();
 
   const handleRun = async () => {
     if (!data.inputVideoUrl) return;
@@ -47,18 +47,28 @@ export function ExtractFrameNode({ id, data }: { id: string; data: ExtractFrameN
   };
 
   return (
-    <div className={`rounded-xl border border-slate-700 bg-slate-900 shadow-lg p-3 w-64 min-w-[250px] transition-all duration-500 ${data.isRunning ? "node-glow-active-emerald" : ""}`}>
+    <div className={`relative rounded-xl border border-slate-700 bg-slate-900 shadow-lg p-3 w-64 min-w-[250px] transition-all duration-500 ${data.isRunning ? "node-glow-active-emerald" : ""}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs uppercase tracking-wider">
           <Scissors size={16} className="text-orange-400" /> Extract Frame
         </div>
-        <button
-          onClick={handleRun}
-          disabled={isPending || !data.inputVideoUrl}
-          className="bg-orange-600 hover:bg-orange-700 disabled:bg-slate-700 text-white p-1.5 rounded-md transition-colors flex items-center justify-center"
-        >
-          {isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => removeNode(id)}
+            className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-rose-300"
+            aria-label="Remove node"
+          >
+            <X size={14} />
+          </button>
+          <button
+            onClick={handleRun}
+            disabled={isPending || !data.inputVideoUrl}
+            className="bg-orange-600 hover:bg-orange-700 disabled:bg-slate-700 text-white p-1.5 rounded-md transition-colors flex items-center justify-center"
+          >
+            {isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+          </button>
+        </div>
       </div>
 
       <div className="mb-3 h-32 bg-slate-950/50 rounded flex items-center justify-center border border-slate-800 overflow-hidden text-center relative group">

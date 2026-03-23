@@ -46,36 +46,49 @@ export async function cropImage(
   width: number,
   height: number
 ): Promise<string> {
-  const inputPath = path.join(os.tmpdir(), `input-${Date.now()}.jpg`);
+  const tempBase = `input-${Date.now()}`;
   const outputPath = path.join(os.tmpdir(), `output-${Date.now()}.jpg`);
+  let inputPath = path.join(os.tmpdir(), `${tempBase}.jpg`);
 
   try {
-    // 1. Download
     const response = await fetch(inputUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+    }
+
     const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length === 0) {
+      throw new Error("Downloaded image is empty.");
+    }
+
+    const extension = detectImageExtension(buffer, response.headers.get("content-type"), inputUrl);
+    inputPath = path.join(os.tmpdir(), `${tempBase}.${extension}`);
     fs.writeFileSync(inputPath, buffer);
 
-    // 2. Process
-    // Logic: x, y, width, height are percentages [0-100]
-    return new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
-        .complexFilter([
-          `crop=iw*${width}/100:ih*${height}/100:iw*${x}/100:ih*${y}/100`
-        ])
-        .on("end", () => {
-          const outBuffer = fs.readFileSync(outputPath);
-          resolve(saveGeneratedBuffer(outBuffer, "jpg"));
-          
-          // Cleanup
-          fs.unlinkSync(inputPath);
-          fs.unlinkSync(outputPath);
-        })
-        .on("error", (err) => reject(err))
-        .save(outputPath);
-    });
+    const clampedX = clampPercentage(x);
+    const clampedY = clampPercentage(y);
+    const clampedWidth = clampPercentage(width);
+    const clampedHeight = clampPercentage(height);
+
+    await runFfmpegCommand([
+      "-y",
+      "-i",
+      inputPath,
+      "-vf",
+      `crop=iw*${clampedWidth}/100:ih*${clampedHeight}/100:iw*${clampedX}/100:ih*${clampedY}/100`,
+      "-frames:v",
+      "1",
+      outputPath,
+    ]);
+
+    const outBuffer = fs.readFileSync(outputPath);
+    return saveGeneratedBuffer(outBuffer, "jpg");
   } catch (error) {
     console.error("FFmpeg Crop Error:", error);
     throw error;
+  } finally {
+    safeUnlink(inputPath);
+    safeUnlink(outputPath);
   }
 }
 
@@ -203,4 +216,69 @@ function safeUnlink(filePath: string) {
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }
+}
+
+function clampPercentage(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, value));
+}
+
+function detectImageExtension(
+  buffer: Buffer,
+  contentType: string | null,
+  inputUrl: string
+) {
+  const normalizedContentType = contentType?.toLowerCase() ?? "";
+
+  if (normalizedContentType.includes("png") || isPng(buffer)) {
+    return "png";
+  }
+
+  if (
+    normalizedContentType.includes("jpeg") ||
+    normalizedContentType.includes("jpg") ||
+    isJpeg(buffer)
+  ) {
+    return "jpg";
+  }
+
+  if (normalizedContentType.includes("webp") || isWebp(buffer)) {
+    return "webp";
+  }
+
+  if (normalizedContentType.includes("gif") || isGif(buffer)) {
+    return "gif";
+  }
+
+  const extensionFromUrl = path.extname(new URL(inputUrl).pathname).replace(".", "").toLowerCase();
+  if (["png", "jpg", "jpeg", "webp", "gif"].includes(extensionFromUrl)) {
+    return extensionFromUrl === "jpeg" ? "jpg" : extensionFromUrl;
+  }
+
+  throw new Error(
+    `Unsupported or unreadable image format. Content-Type was "${contentType ?? "unknown"}".`
+  );
+}
+
+function isPng(buffer: Buffer) {
+  return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+}
+
+function isJpeg(buffer: Buffer) {
+  return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+}
+
+function isGif(buffer: Buffer) {
+  return buffer.length >= 6 && ["GIF87a", "GIF89a"].includes(buffer.subarray(0, 6).toString("ascii"));
+}
+
+function isWebp(buffer: Buffer) {
+  return (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  );
 }

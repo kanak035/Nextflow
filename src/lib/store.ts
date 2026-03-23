@@ -30,6 +30,7 @@ type WorkflowState = {
   onConnect: OnConnect;
   isValidConnection: IsValidConnection;
   addNode: (node: Node) => void;
+  removeNode: (nodeId: string) => void;
   removeEdgeById: (edgeId: string) => void;
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
@@ -157,6 +158,22 @@ export const useWorkflowStore = create<InternalWorkflowState>((set, get) => ({
       canUndo: true,
       canRedo: false,
       nodes: syncDataFlow(newNodes, get().edges),
+    }));
+  },
+
+  removeNode: (nodeId) => {
+    const newNodes = get().nodes.filter((node) => node.id !== nodeId);
+    const newEdges = get().edges.filter(
+      (edge) => edge.source !== nodeId && edge.target !== nodeId
+    );
+
+    set((state) => ({
+      past: [...state.past, createSnapshot(state)],
+      future: [],
+      canUndo: true,
+      canRedo: false,
+      edges: newEdges,
+      nodes: syncDataFlow(newNodes, newEdges),
     }));
   },
 

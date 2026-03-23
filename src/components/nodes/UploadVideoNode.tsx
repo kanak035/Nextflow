@@ -1,15 +1,17 @@
 import React, { useMemo } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "reactflow";
-import { Video } from "lucide-react";
+import { Video, X } from "lucide-react";
 import Uppy from "@uppy/core";
 import Transloadit from "@uppy/transloadit";
 import Dashboard from "@uppy/react/dashboard";
+import { useWorkflowStore } from "../../lib/store";
 
 import "@uppy/core/css/style.min.css";
 import "@uppy/dashboard/css/style.min.css";
 
 export function UploadVideoNode({ id, data }: NodeProps) {
   const { setNodes } = useReactFlow();
+  const { removeNode } = useWorkflowStore();
 
   const uppy = useMemo(() => {
     return new Uppy({
@@ -52,9 +54,19 @@ export function UploadVideoNode({ id, data }: NodeProps) {
   });
 
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-900 shadow-lg p-3 w-80 min-w-[300px]">
-      <div className="flex items-center gap-2 mb-3 text-slate-200 font-semibold text-xs uppercase tracking-wider">
-        <Video size={16} className="text-amber-400" /> Upload Video
+    <div className="relative rounded-xl border border-slate-700 bg-slate-900 shadow-lg p-3 w-80 min-w-[300px]">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-slate-200 font-semibold text-xs uppercase tracking-wider">
+          <Video size={16} className="text-amber-400" /> Upload Video
+        </div>
+        <button
+          type="button"
+          onClick={() => removeNode(id)}
+          className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-rose-300"
+          aria-label="Remove node"
+        >
+          <X size={14} />
+        </button>
       </div>
 
       {!data?.videoUrl ? (
