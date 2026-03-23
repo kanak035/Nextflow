@@ -99,7 +99,18 @@ export default function Home() {
           credentials: "same-origin",
           cache: "no-store",
         });
-        const workflow = (await response.json()) as WorkflowBootstrapResponse;
+        const rawResponse = await response.text();
+        let workflow: WorkflowBootstrapResponse | null = null;
+
+        if (rawResponse) {
+          try {
+            workflow = JSON.parse(rawResponse) as WorkflowBootstrapResponse;
+          } catch {
+            workflow = {
+              error: rawResponse.slice(0, 300) || "Failed to parse workflow bootstrap response",
+            };
+          }
+        }
 
         if (!cancelled) {
           if (!response.ok || !workflow || !isWorkflowBootstrapResponse(workflow)) {
@@ -108,7 +119,7 @@ export default function Home() {
             setBootstrapError(
               workflow && "error" in workflow
                 ? workflow.error ?? "Unknown bootstrap error"
-                : "Failed to fetch workflow"
+                : `Failed to fetch workflow (${response.status})`
             );
           } else {
             loadWorkflowGraph(

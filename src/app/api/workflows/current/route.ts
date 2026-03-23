@@ -14,12 +14,20 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const workflow = await getOrCreateWorkflowForOwner(userId);
-  return NextResponse.json({
-    workflowId: workflow.id,
-    name: workflow.name,
-    graph: parseWorkflowGraph(workflow.graph),
-  });
+  try {
+    const workflow = await getOrCreateWorkflowForOwner(userId);
+    return NextResponse.json({
+      workflowId: workflow.id,
+      name: workflow.name,
+      graph: parseWorkflowGraph(workflow.graph),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      { error: `Failed to load workflow: ${message}` },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PUT(request: Request) {
