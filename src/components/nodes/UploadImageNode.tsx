@@ -3,11 +3,8 @@ import { Handle, Position, useReactFlow, type NodeProps } from "reactflow";
 import { ImagePlus, Trash2, X } from "lucide-react";
 import Uppy from "@uppy/core";
 import Transloadit from "@uppy/transloadit";
-import Dashboard from "@uppy/react/dashboard";
+import Dashboard from "@uppy/react/lib/Dashboard";
 import { useWorkflowStore } from "../../lib/store";
-
-import "@uppy/core/css/style.min.css";
-import "@uppy/dashboard/css/style.min.css";
 
 export function UploadImageNode({ id, data }: NodeProps) {
   const { setNodes } = useReactFlow();

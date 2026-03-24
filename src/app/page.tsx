@@ -9,7 +9,7 @@ import ReactFlow, {
   type NodeTypes,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Show, SignInButton, UserButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import { Download, Loader2, Play, Redo2, Save, Undo2, Upload } from "lucide-react";
 import { TextNode } from "../components/nodes/TextNode";
 import { UploadImageNode } from "../components/nodes/UploadImageNode";
@@ -409,16 +409,16 @@ export default function Home() {
           </button>
         </div>
         <div>
-          <Show when="signed-in">
+          <SignedIn>
             <UserButton />
-          </Show>
-          <Show when="signed-out">
+          </SignedIn>
+          <SignedOut>
             <SignInButton mode="modal">
               <button className="rounded-md bg-slate-800 px-3 py-1 text-xs text-slate-100">
                 Sign in
               </button>
             </SignInButton>
-          </Show>
+          </SignedOut>
         </div>
       </header>
       {bootstrapError ? (
@@ -466,7 +466,7 @@ export default function Home() {
           }}
           onDrop={handleCanvasDrop}
         >
-          <Show when="signed-in">
+          <SignedIn>
             {isBootstrapping ? (
               <div className="flex h-full items-center justify-center text-sm text-slate-400">
                 Loading workflow...
@@ -493,12 +493,12 @@ export default function Home() {
                 <Background gap={20} size={1} />
               </ReactFlow>
             )}
-          </Show>
-          <Show when="signed-out">
+          </SignedIn>
+          <SignedOut>
             <div className="flex h-full items-center justify-center text-xs text-slate-400">
               Please sign in to access the workflow builder.
             </div>
-          </Show>
+          </SignedOut>
         </section>
 
         <aside className="w-96 border-l border-slate-800 bg-slate-900/60 px-4 py-6">

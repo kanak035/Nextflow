@@ -6,6 +6,7 @@ import { defineConfig } from "@prisma/config";
 dotenv.config({ path: path.resolve(__dirname, ".env.local") });
 
 export default defineConfig({
+  engine: "classic",
   datasource: {
     url: process.env.DATABASE_URL!,
   },

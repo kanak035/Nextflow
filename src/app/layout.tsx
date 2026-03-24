@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import "@uppy/core/dist/style.min.css";
+import "@uppy/dashboard/dist/style.min.css";
 
 export const runtime = "nodejs";
 
