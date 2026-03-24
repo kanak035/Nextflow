@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { saveWorkflowForOwner, workflowImportSchema } from "@/lib/workflow-service";
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   const { userId } = await auth();
   if (!userId) {

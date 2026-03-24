@@ -8,6 +8,8 @@ import {
   workflowSaveSchema,
 } from "@/lib/workflow-service";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   const { userId } = await auth();
   if (!userId) {

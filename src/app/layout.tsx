@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
+export const runtime = "nodejs";
+
 export const metadata: Metadata = {
   title: "NextFlow",
   description: "Visual AI workflow builder powered by Gemini and Trigger.dev",
